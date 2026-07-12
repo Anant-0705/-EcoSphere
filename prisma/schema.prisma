@@ -1,0 +1,277 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Users & Org ----------
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  passwordHash  String
+  role          Role     @default(EMPLOYEE)
+  departmentId  String?
+  department    Department? @relation(fields: [departmentId], references: [id])
+  xp            Int      @default(0)   // total XP (gamification)
+  points        Int      @default(0)   // spendable balance (rewards)
+  status        Status   @default(ACTIVE)
+  createdAt     DateTime @default(now())
+
+  participations       EmployeeParticipation[]
+  challengeParts       ChallengeParticipation[]
+  policyAcks           PolicyAcknowledgement[]
+  earnedBadges         EmployeeBadge[]
+  redemptions          RewardRedemption[]
+  ownedIssues          ComplianceIssue[]  @relation("IssueOwner")
+  notifications        Notification[]
+}
+
+enum Role   { ADMIN MANAGER AUDITOR EMPLOYEE }
+enum Status { ACTIVE INACTIVE }
+
+model Organization {
+  id                String  @id @default(cuid())
+  name              String
+  // ESG weighting (configurable, must sum to 100)
+  weightEnv         Int     @default(40)
+  weightSocial      Int     @default(30)
+  weightGov         Int     @default(30)
+  // feature toggles
+  autoEmission      Boolean @default(true)
+  evidenceRequired  Boolean @default(true)
+  badgeAutoAward    Boolean @default(true)
+  notifyInApp       Boolean @default(true)
+  notifyEmail       Boolean @default(false)
+}
+
+// ---------- Master Data ----------
+model Department {
+  id              String  @id @default(cuid())
+  name            String
+  code            String  @unique
+  headId          String?
+  parentId        String?
+  parent          Department?  @relation("DeptHierarchy", fields: [parentId], references: [id])
+  children        Department[] @relation("DeptHierarchy")
+  employeeCount   Int     @default(0)
+  status          Status  @default(ACTIVE)
+  users           User[]
+  score           DepartmentScore?
+}
+
+enum CategoryType { CSR_ACTIVITY CHALLENGE }
+model Category {
+  id      String       @id @default(cuid())
+  name    String
+  type    CategoryType
+  status  Status       @default(ACTIVE)
+}
+
+model EmissionFactor {
+  id        String  @id @default(cuid())
+  name      String                 // e.g. "Diesel (fleet)"
+  scope     String                 // Scope 1 / 2 / 3
+  unit      String                 // e.g. "L", "kWh", "kg"
+  factor    Float                  // kgCO2e per unit
+  source    String?                // reference
+  keywords  String[]               // for AI auto-mapping
+  transactions CarbonTransaction[]
+}
+
+model ProductESGProfile {
+  id             String @id @default(cuid())
+  productName    String
+  carbonPerUnit  Float
+  recyclable     Boolean @default(false)
+  notes          String?
+}
+
+model EnvironmentalGoal {
+  id            String  @id @default(cuid())
+  title         String
+  metric        String                 // e.g. "kgCO2e reduction"
+  baseline      Float
+  target        Float
+  current       Float   @default(0)
+  deadline      DateTime
+  departmentId  String?
+}
+
+model ESGPolicy {
+  id          String  @id @default(cuid())
+  title       String
+  body        String
+  version     String  @default("1.0")
+  mandatory   Boolean @default(true)
+  createdAt   DateTime @default(now())
+  acks        PolicyAcknowledgement[]
+}
+
+model Badge {
+  id          String  @id @default(cuid())
+  name        String
+  description String
+  icon        String                 // emoji or icon key
+  // Unlock rule as structured JSON
+  unlockRule  Json
+  employees   EmployeeBadge[]
+}
+
+model Reward {
+  id            String @id @default(cuid())
+  name          String
+  description   String
+  pointsRequired Int
+  stock         Int
+  status        Status @default(ACTIVE)
+  redemptions   RewardRedemption[]
+}
+
+// ---------- Transactional Data ----------
+model CarbonTransaction {
+  id             String   @id @default(cuid())
+  source         String                 // PURCHASE | MANUFACTURING | EXPENSE | FLEET
+  description    String
+  quantity       Float
+  emissionFactorId String
+  emissionFactor EmissionFactor @relation(fields: [emissionFactorId], references: [id])
+  co2e           Float                  // computed = quantity * factor.factor
+  departmentId   String?
+  date           DateTime @default(now())
+  auto           Boolean  @default(false) // created by auto-emission
+}
+
+model CSRActivity {
+  id          String  @id @default(cuid())
+  title       String
+  categoryId  String
+  description String
+  points      Int
+  date        DateTime
+  participations EmployeeParticipation[]
+}
+
+enum ApprovalStatus { PENDING APPROVED REJECTED }
+
+model EmployeeParticipation {   // CSR participation ONLY
+  id            String @id @default(cuid())
+  employeeId    String
+  employee      User   @relation(fields: [employeeId], references: [id])
+  activityId    String
+  activity      CSRActivity @relation(fields: [activityId], references: [id])
+  proofUrl      String?
+  approval      ApprovalStatus @default(PENDING)
+  pointsEarned  Int    @default(0)
+  completionDate DateTime?
+}
+
+enum ChallengeStatus { DRAFT ACTIVE UNDER_REVIEW COMPLETED ARCHIVED }
+enum Difficulty { EASY MEDIUM HARD }
+
+model Challenge {
+  id              String @id @default(cuid())
+  title           String
+  categoryId      String
+  description     String
+  xp              Int
+  difficulty      Difficulty
+  evidenceRequired Boolean @default(true)
+  deadline        DateTime
+  status          ChallengeStatus @default(DRAFT)
+  participations  ChallengeParticipation[]
+}
+
+model ChallengeParticipation {  // Challenge progress ONLY
+  id           String @id @default(cuid())
+  challengeId  String
+  challenge    Challenge @relation(fields: [challengeId], references: [id])
+  employeeId   String
+  employee     User @relation(fields: [employeeId], references: [id])
+  progress     Int   @default(0)       // 0-100
+  proofUrl     String?
+  approval     ApprovalStatus @default(PENDING)
+  xpAwarded    Int   @default(0)
+}
+
+model PolicyAcknowledgement {
+  id          String @id @default(cuid())
+  policyId    String
+  policy      ESGPolicy @relation(fields: [policyId], references: [id])
+  employeeId  String
+  employee    User @relation(fields: [employeeId], references: [id])
+  acknowledgedAt DateTime @default(now())
+  @@unique([policyId, employeeId])
+}
+
+enum Severity { LOW MEDIUM HIGH CRITICAL }
+enum IssueStatus { OPEN IN_PROGRESS RESOLVED }
+
+model Audit {
+  id          String @id @default(cuid())
+  title       String
+  scope       String                    // dept / area
+  auditorId   String
+  date        DateTime
+  summary     String?
+  issues      ComplianceIssue[]
+}
+
+model ComplianceIssue {
+  id          String @id @default(cuid())
+  auditId     String
+  audit       Audit @relation(fields: [auditId], references: [id])
+  severity    Severity
+  description String
+  ownerId     String
+  owner       User @relation("IssueOwner", fields: [ownerId], references: [id])
+  dueDate     DateTime
+  status      IssueStatus @default(OPEN)
+  overdue     Boolean @default(false)   // set true by cron/check when past dueDate & not RESOLVED
+}
+
+model DepartmentScore {
+  id            String @id @default(cuid())
+  departmentId  String @unique
+  department    Department @relation(fields: [departmentId], references: [id])
+  envScore      Float @default(0)
+  socialScore   Float @default(0)
+  govScore      Float @default(0)
+  totalScore    Float @default(0)
+  updatedAt     DateTime @updatedAt
+}
+
+// ---------- Gamification & System ----------
+model EmployeeBadge {
+  id        String @id @default(cuid())
+  employeeId String
+  employee   User @relation(fields: [employeeId], references: [id])
+  badgeId    String
+  badge      Badge @relation(fields: [badgeId], references: [id])
+  awardedAt  DateTime @default(now())
+  @@unique([employeeId, badgeId])
+}
+
+model RewardRedemption {
+  id          String @id @default(cuid())
+  rewardId    String
+  reward      Reward @relation(fields: [rewardId], references: [id])
+  employeeId  String
+  employee    User @relation(fields: [employeeId], references: [id])
+  pointsSpent Int
+  redeemedAt  DateTime @default(now())
+}
+
+model Notification {
+  id         String @id @default(cuid())
+  userId     String
+  user       User @relation(fields: [userId], references: [id])
+  type       String     // COMPLIANCE_ISSUE | APPROVAL | POLICY_REMINDER | BADGE_UNLOCK
+  title      String
+  body       String
+  read       Boolean @default(false)
+  createdAt  DateTime @default(now())
+}
