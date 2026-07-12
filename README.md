@@ -89,10 +89,29 @@ NEXTAUTH_URL="http://localhost:3000"
 
 ```bash
 npm install --legacy-peer-deps
-npx prisma db push   # or: npm run db:migrate
+npm run db:sync      # prisma generate + db push (adds User.image, OAuth columns, etc.)
+# or: npx prisma migrate deploy
 npm run db:seed      # demo users (skip if already seeded)
 npm run dev
 ```
+
+### Common error: `The column User.image does not exist`
+
+**Not an Auth.js bug.** Prisma schema expects Google OAuth columns, but the DB was never updated after pull.
+
+On the machine that fails (Windows/Mac):
+
+```bash
+# Postgres must be running and DATABASE_URL correct in .env
+npm run db:sync
+# or explicitly:
+npx prisma generate
+npx prisma db push
+```
+
+Then restart `npm run dev` and try Google sign-in again.
+
+This adds: `image`, `googleRefreshToken`, `googleAccessToken`, `googleTokenExpiry`, and makes `passwordHash` optional.
 
 Open [http://localhost:3000](http://localhost:3000).
 
