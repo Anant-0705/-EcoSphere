@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import { getLeaderboard, getActiveChallenges, getUserGamificationProfile, getRewards } from "@/lib/services/gamification"
 import { ChallengesBoard } from "@/components/gamification/challenges"
 import { Leaderboard } from "@/components/gamification/leaderboard"
+import { RewardsShop } from "@/components/gamification/rewards-shop"
 
 export default async function GamificationPage() {
   const session = await auth()
@@ -56,26 +57,7 @@ export default async function GamificationPage() {
         <div className="md:col-span-2 space-y-6">
           <ChallengesBoard challenges={challenges} userProfile={userProfile} />
           
-          <div className="rounded-xl border bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Rewards Catalog</h3>
-            {rewards.length === 0 ? (
-              <p className="text-sm text-gray-500">No rewards available.</p>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2">
-                {rewards.map(r => (
-                  <div key={r.id} className="rounded-lg border p-4 flex justify-between items-center dark:border-gray-800">
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-gray-100">{r.name}</p>
-                      <p className="text-xs text-blue-600 dark:text-blue-400">{r.pointsRequired} Points (Stock: {r.stock})</p>
-                    </div>
-                    <button disabled className="rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-400 dark:bg-gray-800">
-                      Redeem
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <RewardsShop rewards={rewards} userPoints={userProfile?.points || 0} />
         </div>
 
         <div>

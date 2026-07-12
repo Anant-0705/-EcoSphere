@@ -19,11 +19,18 @@ export async function acknowledgePolicy(userId: string, policyId: string) {
   const existing = await prisma.policyAcknowledgement.findUnique({
     where: { policyId_employeeId: { policyId, employeeId: userId } }
   })
-  if (existing) return existing
-
-  const ack = await prisma.policyAcknowledgement.create({
-    data: { policyId, employeeId: userId }
-  })
+  
+  let ack;
+  if (existing) {
+    ack = await prisma.policyAcknowledgement.update({
+      where: { id: existing.id },
+      data: { status: 'ACKNOWLEDGED', acknowledgedAt: new Date() }
+    })
+  } else {
+    ack = await prisma.policyAcknowledgement.create({
+      data: { policyId, employeeId: userId, status: 'ACKNOWLEDGED', acknowledgedAt: new Date() }
+    })
+  }
   
   EventBus.emit('POLICY_ACK', { policyId, userId })
   return ack

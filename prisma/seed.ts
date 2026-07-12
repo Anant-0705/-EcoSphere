@@ -29,6 +29,8 @@ async function main() {
   const mgrEng = await prisma.user.create({ data: { name: 'Bob Manager', email: 'bob@ecocorp.com', passwordHash: dummyPassword, role: Role.MANAGER, departmentId: eng.id } })
   const mgrOps = await prisma.user.create({ data: { name: 'Charlie Manager', email: 'charlie@ecocorp.com', passwordHash: dummyPassword, role: Role.MANAGER, departmentId: ops.id } })
   const auditor = await prisma.user.create({ data: { name: 'Diana Auditor', email: 'diana@ecocorp.com', passwordHash: dummyPassword, role: Role.AUDITOR } })
+  const priya = await prisma.user.create({ data: { name: 'Priya Singh', email: 'priya@ecocorp.com', passwordHash: dummyPassword, role: Role.EMPLOYEE, departmentId: eng.id } })
+  const rohan = await prisma.user.create({ data: { name: 'Rohan Mehta', email: 'rohan@ecocorp.com', passwordHash: dummyPassword, role: Role.EMPLOYEE, departmentId: eng.id } })
   
   const employees = []
   for (let i = 1; i <= 11; i++) {
@@ -75,9 +77,9 @@ async function main() {
   await prisma.environmentalGoal.create({ data: { title: 'Paperless Office', metric: 'kg paper', baseline: 500, target: 50, current: 200, deadline: new Date('2026-09-30') } })
 
   // 7. Policies
-  const pol1 = await prisma.eSGPolicy.create({ data: { title: 'Code of Conduct', body: 'Standard code of conduct...', mandatory: true } })
-  const pol2 = await prisma.eSGPolicy.create({ data: { title: 'Supplier Diversity', body: 'We prioritize diverse suppliers...', mandatory: true } })
-  const pol3 = await prisma.eSGPolicy.create({ data: { title: 'Remote Work Policy', body: 'Remote work guidelines...', mandatory: false } })
+  const pol1 = await prisma.eSGPolicy.create({ data: { title: 'Code of Conduct', body: 'Standard code of conduct...', mandatory: true, ackDeadline: new Date('2026-12-31') } })
+  const pol2 = await prisma.eSGPolicy.create({ data: { title: 'Supplier Diversity', body: 'We prioritize diverse suppliers...', mandatory: true, ackDeadline: new Date('2026-12-31') } })
+  const pol3 = await prisma.eSGPolicy.create({ data: { title: 'Remote Work Policy', body: 'Remote work guidelines...', mandatory: false, ackDeadline: new Date('2026-12-31') } })
 
   // Acks
   await prisma.policyAcknowledgement.create({ data: { policyId: pol1.id, employeeId: employees[0].id } })
@@ -104,32 +106,45 @@ async function main() {
   // 11. Audits & Issues (crucial for demo)
   const audit = await prisma.audit.create({ data: { title: 'Q3 ESG Compliance', scope: 'Engineering', auditorId: auditor.id, date: new Date() } })
   
-  // Overdue issue for Engineering (important for Advisor AI prompt)
+  // Overdue issues for Engineering (important for Advisor AI prompt)
   await prisma.complianceIssue.create({
     data: {
       auditId: audit.id,
       severity: Severity.HIGH,
       description: 'Missing supplier carbon reports in contractor portal',
-      ownerId: mgrEng.id,
+      ownerId: priya.id,
       dueDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 1 week ago
       status: IssueStatus.OPEN,
-      overdue: true
+      overdue: true,
+      departmentId: eng.id
     }
   })
   
-  // Open issue, not overdue
   await prisma.complianceIssue.create({
     data: {
       auditId: audit.id,
-      severity: Severity.MEDIUM,
+      severity: Severity.HIGH,
       description: 'Incomplete employee diversity survey',
-      ownerId: mgrEng.id, // wait, hr is department. We need a user. Let's use mgrEng for simplicity
-      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      ownerId: rohan.id,
+      dueDate: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000), // 2 weeks ago
       status: IssueStatus.OPEN,
+      overdue: true,
+      departmentId: eng.id
     }
   })
-  // Let's re-assign to mgrOps
-  await prisma.complianceIssue.updateMany({ where: { description: 'Incomplete employee diversity survey' }, data: { ownerId: mgrOps.id } })
+  
+  await prisma.complianceIssue.create({
+    data: {
+      auditId: audit.id,
+      severity: Severity.CRITICAL,
+      description: 'Failed safety inspection documentation',
+      ownerId: rohan.id,
+      dueDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), // 3 days ago
+      status: IssueStatus.OPEN,
+      overdue: true,
+      departmentId: eng.id
+    }
+  })
 
   // 12. Badges
   await prisma.badge.create({ data: { name: 'Eco Warrior', description: 'Complete 5 eco habits', icon: '🌿', unlockRule: { type: "CHALLENGES_COMPLETED", threshold: 5 } } })
@@ -140,10 +155,10 @@ async function main() {
   await prisma.reward.create({ data: { name: 'Extra PTO Day', description: '1 day off', pointsRequired: 500, stock: 5 } })
 
   // 14. Department Scores
-  await prisma.departmentScore.create({ data: { departmentId: eng.id, envScore: 65, socialScore: 80, govScore: 40, totalScore: 61 } }) // low gov score for the demo
-  await prisma.departmentScore.create({ data: { departmentId: ops.id, envScore: 45, socialScore: 70, govScore: 90, totalScore: 68 } })
-  await prisma.departmentScore.create({ data: { departmentId: hr.id, envScore: 80, socialScore: 95, govScore: 85, totalScore: 86 } })
-  await prisma.departmentScore.create({ data: { departmentId: mkt.id, envScore: 75, socialScore: 85, govScore: 90, totalScore: 83 } })
+  await prisma.departmentScore.create({ data: { departmentId: eng.id, envScore: 65, socialScore: 80, govScore: 40, totalScore: 61, trend: -4.5, reason: 'Governance score dropped due to 3 overdue compliance issues.' } }) // low gov score for the demo
+  await prisma.departmentScore.create({ data: { departmentId: ops.id, envScore: 45, socialScore: 70, govScore: 90, totalScore: 68, trend: +2.1, reason: 'Improved environmental efficiency on fleet.' } })
+  await prisma.departmentScore.create({ data: { departmentId: hr.id, envScore: 80, socialScore: 95, govScore: 85, totalScore: 86, trend: +5.0, reason: 'Outstanding employee participation in recent CSR activities.' } })
+  await prisma.departmentScore.create({ data: { departmentId: mkt.id, envScore: 75, socialScore: 85, govScore: 90, totalScore: 83, trend: -1.2, reason: 'Slight dip in environmental metric.' } })
 
   console.log('Seeding finished.')
 }

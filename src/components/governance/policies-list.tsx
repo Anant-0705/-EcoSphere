@@ -27,18 +27,21 @@ export function PoliciesList({ policies, acks }: { policies: any[], acks: any[] 
       
       <div className="space-y-4">
         {policies.map(p => {
-          const isAcked = ackPolicyIds.has(p.id)
+          const ackRecord = acks.find(a => a.policyId === p.id)
+          const isAcked = ackRecord?.status === 'ACKNOWLEDGED'
+          const isOverdue = ackRecord?.status === 'OVERDUE'
           return (
-            <div key={p.id} className="rounded-lg border p-4 flex justify-between items-center dark:border-gray-800">
+            <div key={p.id} className={`rounded-lg border p-4 flex justify-between items-center dark:border-gray-800 ${isOverdue ? 'border-red-500 bg-red-50/50 dark:bg-red-900/10' : ''}`}>
               <div>
                 <p className="font-medium text-gray-900 dark:text-gray-100">{p.title} <span className="text-xs text-gray-500">v{p.version}</span></p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-1">{p.body}</p>
+                {isOverdue && <p className="text-xs font-bold text-red-600 mt-1">OVERDUE (Deadline: {new Date(p.ackDeadline).toLocaleDateString()})</p>}
               </div>
               {!isAcked ? (
                 <button
                   onClick={() => handleAck(p.id)}
                   disabled={loadingId === p.id}
-                  className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-50"
+                  className={`rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50 ${isOverdue ? 'bg-red-600 hover:bg-red-500' : 'bg-emerald-600 hover:bg-emerald-500'}`}
                 >
                   {loadingId === p.id ? "Signing..." : "Acknowledge"}
                 </button>

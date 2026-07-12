@@ -21,13 +21,23 @@ export function IssuesBoard({ issues }: { issues: any[] }) {
     <div className="rounded-xl border bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Compliance Issues</h3>
-        <button 
-          onClick={triggerCron}
-          disabled={runningCron}
-          className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium px-3 py-1 rounded-md dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 disabled:opacity-50"
-        >
-          {runningCron ? "Running..." : "Run Nightly Overdue Check"}
-        </button>
+        <div className="flex gap-2">
+          <a
+            href="/api/reports/governance"
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-medium px-3 py-1 rounded-md dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
+          >
+            Export PDF
+          </a>
+          <button 
+            onClick={triggerCron}
+            disabled={runningCron}
+            className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium px-3 py-1 rounded-md dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 disabled:opacity-50"
+          >
+            {runningCron ? "Running..." : "Run Nightly Overdue Check"}
+          </button>
+        </div>
       </div>
 
       <div className="overflow-x-auto">
