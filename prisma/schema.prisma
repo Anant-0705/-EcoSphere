@@ -30,8 +30,17 @@ model User {
   notifications        Notification[]
 }
 
-enum Role   { ADMIN MANAGER AUDITOR EMPLOYEE }
-enum Status { ACTIVE INACTIVE }
+enum Role {
+  ADMIN
+  MANAGER
+  AUDITOR
+  EMPLOYEE
+}
+
+enum Status {
+  ACTIVE
+  INACTIVE
+}
 
 model Organization {
   id                String  @id @default(cuid())
@@ -63,7 +72,11 @@ model Department {
   score           DepartmentScore?
 }
 
-enum CategoryType { CSR_ACTIVITY CHALLENGE }
+enum CategoryType {
+  CSR_ACTIVITY
+  CHALLENGE
+}
+
 model Category {
   id      String       @id @default(cuid())
   name    String
@@ -155,7 +168,11 @@ model CSRActivity {
   participations EmployeeParticipation[]
 }
 
-enum ApprovalStatus { PENDING APPROVED REJECTED }
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
 
 model EmployeeParticipation {   // CSR participation ONLY
   id            String @id @default(cuid())
@@ -169,8 +186,19 @@ model EmployeeParticipation {   // CSR participation ONLY
   completionDate DateTime?
 }
 
-enum ChallengeStatus { DRAFT ACTIVE UNDER_REVIEW COMPLETED ARCHIVED }
-enum Difficulty { EASY MEDIUM HARD }
+enum ChallengeStatus {
+  DRAFT
+  ACTIVE
+  UNDER_REVIEW
+  COMPLETED
+  ARCHIVED
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
 
 model Challenge {
   id              String @id @default(cuid())
@@ -207,8 +235,18 @@ model PolicyAcknowledgement {
   @@unique([policyId, employeeId])
 }
 
-enum Severity { LOW MEDIUM HIGH CRITICAL }
-enum IssueStatus { OPEN IN_PROGRESS RESOLVED }
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IssueStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
 
 model Audit {
   id          String @id @default(cuid())
