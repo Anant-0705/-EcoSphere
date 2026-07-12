@@ -1,21 +1,22 @@
 import { NextResponse } from "next/server"
-import {
-  getAppBaseUrl,
-  getOAuth2Client,
-  storeGoogleTokens,
-  formatGoogleError,
-} from "@/lib/google"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-/**
- * Google OAuth redirect target (must match GOOGLE_REDIRECT_URI / production URL).
- */
 export async function GET(req: Request) {
-  const baseUrl = getAppBaseUrl()
+  const baseUrl = (
+    process.env.NEXTAUTH_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+    "http://localhost:3000"
+  ).replace(/\/$/, "")
 
   try {
+    const {
+      getOAuth2Client,
+      storeGoogleTokens,
+      formatGoogleError,
+    } = await import("@/lib/google")
+
     const { searchParams } = new URL(req.url)
     const code = searchParams.get("code")
     const state = searchParams.get("state")
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
       )
     }
 
-    const client = getOAuth2Client()
+    const client = await getOAuth2Client()
     const { tokens } = await client.getToken(code)
     client.setCredentials(tokens)
 
@@ -73,6 +74,10 @@ export async function GET(req: Request) {
     return NextResponse.redirect(`${baseUrl}/environmental?gmail=connected`)
   } catch (error: unknown) {
     console.error("Gmail callback error:", error)
+    const { formatGoogleError } = await import("@/lib/google").catch(() => ({
+      formatGoogleError: (e: unknown) =>
+        e instanceof Error ? e.message : "callback_failed",
+    }))
     const message = formatGoogleError(error)
     const short =
       message.startsWith("user_not_found")

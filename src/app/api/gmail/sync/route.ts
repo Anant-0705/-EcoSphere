@@ -1,28 +1,29 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
-import { ingestDocument } from "@/lib/services/ingestion"
-import { prisma } from "@/lib/db"
-import {
-  formatGoogleError,
-  getUserGoogleAccessToken,
-} from "@/lib/google"
-import {
-  buildCarbonReportSearchQuery,
-  collectFileAttachments,
-  getGmailMaxMessages,
-  getGmailSubjectPhrase,
-} from "@/lib/gmail-search"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
 /**
- * Strict Gmail sync: only emails whose subject matches the company phrase
- * (default: "Carbon Emission Annual Report"), latest message first.
+ * Strict Gmail sync — heavy deps are dynamic-imported so the route
+ * module can load on Vercel without crashing into an HTML 500 page.
  */
 export async function POST(req: Request) {
   try {
+    // Light imports first so we can always return JSON errors
+    const { auth } = await import("@/lib/auth")
+    const { prisma } = await import("@/lib/db")
+    const {
+      formatGoogleError,
+      getUserGoogleAccessToken,
+    } = await import("@/lib/google")
+    const {
+      buildCarbonReportSearchQuery,
+      collectFileAttachments,
+      getGmailMaxMessages,
+      getGmailSubjectPhrase,
+    } = await import("@/lib/gmail-search")
+
     const session = await auth()
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -35,23 +36,13 @@ export async function POST(req: Request) {
       try {
         accessToken = await getUserGoogleAccessToken(session.user.id)
       } catch (e) {
-        // Missing DB columns (migration not applied) often surfaces here
-        const msg = formatGoogleError(e)
-        if (
-          msg.includes("does not exist") ||
-          msg.includes("Unknown column") ||
-          msg.includes("column")
-        ) {
-          return NextResponse.json(
-            {
-              error:
-                "Database is missing Google OAuth columns. Run: npx prisma db push (or migrate deploy) on the production DATABASE_URL.",
-              code: "DB_SCHEMA_OUTDATED",
-            },
-            { status: 500 }
-          )
-        }
-        throw e
+        return NextResponse.json(
+          {
+            error: formatGoogleError(e),
+            code: "TOKEN_LOOKUP_FAILED",
+          },
+          { status: 500 }
+        )
       }
     }
 
@@ -78,7 +69,6 @@ export async function POST(req: Request) {
       )
     }
 
-    // Dynamic import — more reliable on Vercel serverless
     const { google } = await import("googleapis")
     const oauth2Client = new google.auth.OAuth2()
     oauth2Client.setCredentials({ access_token: accessToken })
@@ -112,6 +102,9 @@ export async function POST(req: Request) {
       })
     }
 
+    // Only load AI/PDF stack when we actually have mail to process
+    const { ingestDocument } = await import("@/lib/services/ingestion")
+
     let totalCreated = 0
     let totalCO2e = 0
     let filesProcessed = 0
@@ -133,9 +126,7 @@ export async function POST(req: Request) {
         "(no subject)"
 
       if (!subject.toLowerCase().includes(subjectPhrase.toLowerCase())) {
-        if (!process.env.GMAIL_SEARCH_QUERY?.trim()) {
-          continue
-        }
+        if (!process.env.GMAIL_SEARCH_QUERY?.trim()) continue
       }
 
       matchedSubjects.push(subject)
@@ -171,9 +162,7 @@ export async function POST(req: Request) {
           totalCreated += summary.created
           totalCO2e += summary.totalCO2e
         } catch (fileErr) {
-          fileErrors.push(
-            `${file.filename}: ${formatGoogleError(fileErr)}`
-          )
+          fileErrors.push(`${file.filename}: ${formatGoogleError(fileErr)}`)
         }
       }
     }
@@ -203,12 +192,10 @@ export async function POST(req: Request) {
     })
   } catch (error: unknown) {
     console.error("Gmail sync error:", error)
-    const message = formatGoogleError(error)
+    const message =
+      error instanceof Error ? error.message : "Failed to sync Gmail"
     return NextResponse.json(
-      {
-        error: message,
-        code: "GMAIL_SYNC_FAILED",
-      },
+      { error: message, code: "GMAIL_SYNC_FAILED" },
       { status: 500 }
     )
   }

@@ -1,21 +1,23 @@
 import { NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
-import {
-  getAppBaseUrl,
-  getGmailAuthUrl,
-  resolveAppUser,
-} from "@/lib/google"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-/**
- * Starts the Gmail OAuth flow (gmail.readonly).
- */
 export async function GET() {
-  const baseUrl = getAppBaseUrl()
+  // Resolve base without pulling googleapis at module load
+  const baseUrl = (
+    process.env.NEXTAUTH_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+    "http://localhost:3000"
+  ).replace(/\/$/, "")
 
   try {
+    const { auth } = await import("@/lib/auth")
+    const {
+      getGmailAuthUrl,
+      resolveAppUser,
+    } = await import("@/lib/google")
+
     const session = await auth()
     if (!session?.user) {
       return NextResponse.redirect(new URL("/login", baseUrl))
@@ -58,7 +60,7 @@ export async function GET() {
       })
     ).toString("base64url")
 
-    const url = getGmailAuthUrl(state)
+    const url = await getGmailAuthUrl(state)
     return NextResponse.redirect(url)
   } catch (error: unknown) {
     const message =

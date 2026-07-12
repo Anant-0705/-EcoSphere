@@ -1,4 +1,3 @@
-import { google } from "googleapis"
 import { prisma } from "@/lib/db"
 
 const GMAIL_SCOPES = [
@@ -22,7 +21,6 @@ export function getAppBaseUrl() {
 
 export function getGmailRedirectUri() {
   const explicit = process.env.GOOGLE_REDIRECT_URI?.trim()
-  // If someone left localhost in Vercel env, override with production base
   if (
     explicit &&
     !(
@@ -35,7 +33,8 @@ export function getGmailRedirectUri() {
   return `${getAppBaseUrl()}/api/gmail/callback`
 }
 
-export function getOAuth2Client() {
+/** Lazy-load googleapis (avoids Vercel serverless module-init crashes). */
+export async function getOAuth2Client() {
   const clientId = process.env.GOOGLE_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET
   const redirectUri = getGmailRedirectUri()
@@ -44,11 +43,12 @@ export function getOAuth2Client() {
     throw new Error("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set")
   }
 
+  const { google } = await import("googleapis")
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri)
 }
 
-export function getGmailAuthUrl(state: string) {
-  const client = getOAuth2Client()
+export async function getGmailAuthUrl(state: string) {
+  const client = await getOAuth2Client()
   return client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
@@ -57,9 +57,6 @@ export function getGmailAuthUrl(state: string) {
   })
 }
 
-/**
- * Resolve the EcoSphere user for Gmail OAuth: prefer id, fall back to email.
- */
 export async function resolveAppUser(opts: {
   userId?: string | null
   email?: string | null
@@ -81,7 +78,6 @@ export async function resolveAppUser(opts: {
   return null
 }
 
-/** Get a valid access token for the user, refreshing if needed. */
 export async function getUserGoogleAccessToken(
   userId: string
 ): Promise<string | null> {
@@ -110,7 +106,7 @@ export async function getUserGoogleAccessToken(
   }
 
   try {
-    const client = getOAuth2Client()
+    const client = await getOAuth2Client()
     client.setCredentials({ refresh_token: user.googleRefreshToken })
 
     const { credentials } = await client.refreshAccessToken()
@@ -133,7 +129,6 @@ export async function getUserGoogleAccessToken(
     return accessToken
   } catch (e) {
     console.error("Failed to refresh Google access token:", e)
-    // Stale refresh token — force reconnect
     return null
   }
 }
@@ -175,7 +170,6 @@ export async function storeGoogleTokens(
   return user
 }
 
-/** Human-readable message from Google/Gaxios errors */
 export function formatGoogleError(error: unknown): string {
   if (!error) return "Unknown error"
   if (typeof error === "string") return error
@@ -202,10 +196,16 @@ export function formatGoogleError(error: unknown): string {
 
   if (
     String(apiMsg).includes("invalid_grant") ||
-    String(apiMsg).includes("Invalid Credentials") ||
-    String(apiMsg).toLowerCase().includes("token")
+    String(apiMsg).includes("Invalid Credentials")
   ) {
     return "Gmail token expired or invalid. Click Connect Gmail again."
+  }
+
+  if (
+    String(apiMsg).includes("does not exist") ||
+    String(apiMsg).includes("Unknown argument")
+  ) {
+    return "Database schema is outdated (missing Google OAuth columns). Run prisma db push on production DATABASE_URL."
   }
 
   return apiMsg
