@@ -94,3 +94,94 @@ EventBus.on('CSR_APPROVED', async ({ participationId }) => {
 EventBus.on('XP_CHANGED', async ({ userId }) => {
   await evaluateBadgeUnlocks(userId)
 })
+
+export async function joinChallenge(userId: string, challengeId: string) {
+  const existing = await prisma.challengeParticipation.findFirst({
+    where: { employeeId: userId, challengeId }
+  })
+  if (existing) throw new Error("Already joined")
+
+  return prisma.challengeParticipation.create({
+    data: {
+      employeeId: userId,
+      challengeId,
+      progress: 0
+    }
+  })
+}
+
+export async function submitChallengeProof(participationId: string, proofUrl: string) {
+  return prisma.challengeParticipation.update({
+    where: { id: participationId },
+    data: { proofUrl }
+  })
+}
+
+export async function approveChallenge(participationId: string) {
+  const p = await prisma.challengeParticipation.update({
+    where: { id: participationId },
+    data: { approval: 'APPROVED', progress: 100 }
+  })
+  EventBus.emit('CHALLENGE_APPROVED', { participationId: p.id })
+  return p
+}
+
+export async function redeemReward(userId: string, rewardId: string) {
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({ where: { id: userId } })
+    const reward = await tx.reward.findUnique({ where: { id: rewardId } })
+    if (!user || !reward) throw new Error("Not found")
+    if (reward.stock <= 0) throw new Error("Out of stock")
+    if (user.points < reward.pointsRequired) throw new Error("Insufficient points")
+
+    await tx.reward.update({
+      where: { id: reward.id },
+      data: { stock: { decrement: 1 } }
+    })
+    await tx.user.update({
+      where: { id: user.id },
+      data: { points: { decrement: reward.pointsRequired } }
+    })
+
+    return tx.rewardRedemption.create({
+      data: {
+        employeeId: userId,
+        rewardId: reward.id,
+        pointsSpent: reward.pointsRequired
+      }
+    })
+  })
+}
+
+export async function getLeaderboard(departmentId?: string) {
+  return prisma.user.findMany({
+    where: departmentId ? { departmentId } : undefined,
+    orderBy: { xp: 'desc' },
+    take: 50,
+    include: { department: true }
+  })
+}
+
+export async function getActiveChallenges() {
+  return prisma.challenge.findMany({
+    where: { status: 'ACTIVE' },
+    orderBy: { deadline: 'asc' }
+  })
+}
+
+export async function getRewards() {
+  return prisma.reward.findMany({
+    where: { status: 'ACTIVE', stock: { gt: 0 } },
+    orderBy: { pointsRequired: 'asc' }
+  })
+}
+
+export async function getUserGamificationProfile(userId: string) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      earnedBadges: { include: { badge: true } },
+      challengeParts: { include: { challenge: true } }
+    }
+  })
+}

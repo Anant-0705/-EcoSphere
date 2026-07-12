@@ -1,6 +1,7 @@
 import { PrismaClient, ApprovalStatus, IssueStatus } from "@prisma/client"
 import { EventBus } from "../events"
 
+
 const prisma = new PrismaClient()
 
 function clamp(val: number, min: number, max: number) {
