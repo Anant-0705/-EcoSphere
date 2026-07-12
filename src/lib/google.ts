@@ -8,12 +8,37 @@ const GMAIL_SCOPES = [
   "profile",
 ]
 
+/** Production-safe base URL (never use localhost on Vercel). */
+export function getAppBaseUrl() {
+  const fromEnv = process.env.NEXTAUTH_URL?.trim() || process.env.AUTH_URL?.trim()
+  if (fromEnv) return fromEnv.replace(/\/$/, "")
+
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL.replace(/\/$/, "")}`
+  }
+
+  return "http://localhost:3000"
+}
+
+export function getGmailRedirectUri() {
+  const explicit = process.env.GOOGLE_REDIRECT_URI?.trim()
+  // If someone left localhost in Vercel env, override with production base
+  if (
+    explicit &&
+    !(
+      process.env.VERCEL &&
+      (explicit.includes("localhost") || explicit.includes("127.0.0.1"))
+    )
+  ) {
+    return explicit
+  }
+  return `${getAppBaseUrl()}/api/gmail/callback`
+}
+
 export function getOAuth2Client() {
   const clientId = process.env.GOOGLE_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET
-  const redirectUri =
-    process.env.GOOGLE_REDIRECT_URI ||
-    `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/gmail/callback`
+  const redirectUri = getGmailRedirectUri()
 
   if (!clientId || !clientSecret) {
     throw new Error("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set")
@@ -35,7 +60,10 @@ export function getGmailAuthUrl(state: string) {
 /**
  * Resolve the EcoSphere user for Gmail OAuth: prefer id, fall back to email.
  */
-export async function resolveAppUser(opts: { userId?: string | null; email?: string | null }) {
+export async function resolveAppUser(opts: {
+  userId?: string | null
+  email?: string | null
+}) {
   if (opts.userId) {
     const byId = await prisma.user.findUnique({ where: { id: opts.userId } })
     if (byId) return byId
@@ -45,15 +73,18 @@ export async function resolveAppUser(opts: { userId?: string | null; email?: str
       where: { email: opts.email.toLowerCase() },
     })
     if (byEmail) return byEmail
-    // case-sensitive exact match fallback
-    const byEmailExact = await prisma.user.findUnique({ where: { email: opts.email } })
+    const byEmailExact = await prisma.user.findUnique({
+      where: { email: opts.email },
+    })
     if (byEmailExact) return byEmailExact
   }
   return null
 }
 
 /** Get a valid access token for the user, refreshing if needed. */
-export async function getUserGoogleAccessToken(userId: string): Promise<string | null> {
+export async function getUserGoogleAccessToken(
+  userId: string
+): Promise<string | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
@@ -78,25 +109,33 @@ export async function getUserGoogleAccessToken(userId: string): Promise<string |
     return user.googleAccessToken || null
   }
 
-  const client = getOAuth2Client()
-  client.setCredentials({ refresh_token: user.googleRefreshToken })
+  try {
+    const client = getOAuth2Client()
+    client.setCredentials({ refresh_token: user.googleRefreshToken })
 
-  const { credentials } = await client.refreshAccessToken()
-  const accessToken = credentials.access_token || null
-  const expiry = credentials.expiry_date ? new Date(credentials.expiry_date) : null
+    const { credentials } = await client.refreshAccessToken()
+    const accessToken = credentials.access_token || null
+    const expiry = credentials.expiry_date
+      ? new Date(credentials.expiry_date)
+      : null
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      googleAccessToken: accessToken,
-      googleTokenExpiry: expiry,
-      ...(credentials.refresh_token
-        ? { googleRefreshToken: credentials.refresh_token }
-        : {}),
-    },
-  })
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        googleAccessToken: accessToken,
+        googleTokenExpiry: expiry,
+        ...(credentials.refresh_token
+          ? { googleRefreshToken: credentials.refresh_token }
+          : {}),
+      },
+    })
 
-  return accessToken
+    return accessToken
+  } catch (e) {
+    console.error("Failed to refresh Google access token:", e)
+    // Stale refresh token — force reconnect
+    return null
+  }
 }
 
 export async function storeGoogleTokens(
@@ -121,8 +160,12 @@ export async function storeGoogleTokens(
   await prisma.user.update({
     where: { id: user.id },
     data: {
-      ...(tokens.access_token ? { googleAccessToken: tokens.access_token } : {}),
-      ...(tokens.refresh_token ? { googleRefreshToken: tokens.refresh_token } : {}),
+      ...(tokens.access_token
+        ? { googleAccessToken: tokens.access_token }
+        : {}),
+      ...(tokens.refresh_token
+        ? { googleRefreshToken: tokens.refresh_token }
+        : {}),
       ...(tokens.expiry_date != null
         ? { googleTokenExpiry: new Date(tokens.expiry_date) }
         : {}),
@@ -130,4 +173,40 @@ export async function storeGoogleTokens(
   })
 
   return user
+}
+
+/** Human-readable message from Google/Gaxios errors */
+export function formatGoogleError(error: unknown): string {
+  if (!error) return "Unknown error"
+  if (typeof error === "string") return error
+
+  const e = error as {
+    message?: string
+    code?: number | string
+    errors?: { message?: string }[]
+    response?: { data?: { error?: { message?: string; status?: string } } }
+  }
+
+  const apiMsg =
+    e.response?.data?.error?.message ||
+    e.errors?.[0]?.message ||
+    e.message ||
+    "Google API error"
+
+  if (
+    String(apiMsg).includes("Gmail API has not been used") ||
+    String(apiMsg).includes("accessNotConfigured")
+  ) {
+    return "Gmail API is not enabled for this Google Cloud project. Enable it in Google Cloud Console → APIs → Gmail API."
+  }
+
+  if (
+    String(apiMsg).includes("invalid_grant") ||
+    String(apiMsg).includes("Invalid Credentials") ||
+    String(apiMsg).toLowerCase().includes("token")
+  ) {
+    return "Gmail token expired or invalid. Click Connect Gmail again."
+  }
+
+  return apiMsg
 }

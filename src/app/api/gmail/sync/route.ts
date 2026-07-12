@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { google } from "googleapis"
 import { ingestDocument } from "@/lib/services/ingestion"
 import { prisma } from "@/lib/db"
-import { getUserGoogleAccessToken } from "@/lib/google"
+import {
+  formatGoogleError,
+  getUserGoogleAccessToken,
+} from "@/lib/google"
 import {
   buildCarbonReportSearchQuery,
   collectFileAttachments,
@@ -11,10 +13,13 @@ import {
   getGmailSubjectPhrase,
 } from "@/lib/gmail-search"
 
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+export const maxDuration = 60
+
 /**
  * Strict Gmail sync: only emails whose subject matches the company phrase
  * (default: "Carbon Emission Annual Report"), latest message first.
- * AI then parses attachments into carbon transactions.
  */
 export async function POST(req: Request) {
   try {
@@ -23,11 +28,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const body = await req.json().catch(() => ({}))
+    const body = await req.json().catch(() => ({} as { accessToken?: string }))
     let accessToken: string | null = body.accessToken || null
 
     if (!accessToken) {
-      accessToken = await getUserGoogleAccessToken(session.user.id)
+      try {
+        accessToken = await getUserGoogleAccessToken(session.user.id)
+      } catch (e) {
+        // Missing DB columns (migration not applied) often surfaces here
+        const msg = formatGoogleError(e)
+        if (
+          msg.includes("does not exist") ||
+          msg.includes("Unknown column") ||
+          msg.includes("column")
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                "Database is missing Google OAuth columns. Run: npx prisma db push (or migrate deploy) on the production DATABASE_URL.",
+              code: "DB_SCHEMA_OUTDATED",
+            },
+            { status: 500 }
+          )
+        }
+        throw e
+      }
     }
 
     if (!accessToken) {
@@ -47,9 +72,14 @@ export async function POST(req: Request) {
     })
 
     if (!user || (user.role !== "ADMIN" && user.role !== "MANAGER")) {
-      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
+      return NextResponse.json(
+        { error: "Insufficient permissions (ADMIN or MANAGER required)" },
+        { status: 403 }
+      )
     }
 
+    // Dynamic import — more reliable on Vercel serverless
+    const { google } = await import("googleapis")
     const oauth2Client = new google.auth.OAuth2()
     oauth2Client.setCredentials({ access_token: accessToken })
     const gmail = google.gmail({ version: "v1", auth: oauth2Client })
@@ -58,12 +88,19 @@ export async function POST(req: Request) {
     const subjectPhrase = getGmailSubjectPhrase()
     const maxResults = getGmailMaxMessages()
 
-    // Gmail returns newest first by default
-    const response = await gmail.users.messages.list({
-      userId: "me",
-      q: searchQuery,
-      maxResults,
-    })
+    let response
+    try {
+      response = await gmail.users.messages.list({
+        userId: "me",
+        q: searchQuery,
+        maxResults,
+      })
+    } catch (e) {
+      return NextResponse.json(
+        { error: formatGoogleError(e), code: "GMAIL_API_ERROR" },
+        { status: 502 }
+      )
+    }
 
     const messages = response.data.messages || []
     if (messages.length === 0) {
@@ -79,6 +116,7 @@ export async function POST(req: Request) {
     let totalCO2e = 0
     let filesProcessed = 0
     const matchedSubjects: string[] = []
+    const fileErrors: string[] = []
 
     for (const msg of messages) {
       if (!msg.id) continue
@@ -91,11 +129,10 @@ export async function POST(req: Request) {
 
       const headers = fullMsg.data.payload?.headers || []
       const subject =
-        headers.find((h) => h.name?.toLowerCase() === "subject")?.value || "(no subject)"
+        headers.find((h) => h.name?.toLowerCase() === "subject")?.value ||
+        "(no subject)"
 
-      // Defense in depth: re-check subject even if Gmail query is loose
       if (!subject.toLowerCase().includes(subjectPhrase.toLowerCase())) {
-        // Skip if using custom GMAIL_SEARCH_QUERY that isn't subject-only
         if (!process.env.GMAIL_SEARCH_QUERY?.trim()) {
           continue
         }
@@ -105,33 +142,39 @@ export async function POST(req: Request) {
 
       const root = fullMsg.data.payload
       const parts = root?.parts || (root ? [root] : [])
-      const files = collectFileAttachments(parts as Parameters<typeof collectFileAttachments>[0])
+      const files = collectFileAttachments(
+        parts as Parameters<typeof collectFileAttachments>[0]
+      )
 
-      if (files.length === 0) {
-        continue
-      }
+      if (files.length === 0) continue
 
       for (const file of files) {
-        const attachment = await gmail.users.messages.attachments.get({
-          userId: "me",
-          messageId: msg.id,
-          id: file.attachmentId,
-        })
+        try {
+          const attachment = await gmail.users.messages.attachments.get({
+            userId: "me",
+            messageId: msg.id,
+            id: file.attachmentId,
+          })
 
-        if (!attachment.data.data) continue
+          if (!attachment.data.data) continue
 
-        const buffer = Buffer.from(attachment.data.data, "base64")
-        const summary = await ingestDocument(
-          buffer,
-          file.filename,
-          "GMAIL",
-          session.user.id,
-          user.departmentId || undefined
-        )
+          const buffer = Buffer.from(attachment.data.data, "base64")
+          const summary = await ingestDocument(
+            buffer,
+            file.filename,
+            "GMAIL",
+            session.user.id,
+            user.departmentId || undefined
+          )
 
-        filesProcessed++
-        totalCreated += summary.created
-        totalCO2e += summary.totalCO2e
+          filesProcessed++
+          totalCreated += summary.created
+          totalCO2e += summary.totalCO2e
+        } catch (fileErr) {
+          fileErrors.push(
+            `${file.filename}: ${formatGoogleError(fileErr)}`
+          )
+        }
       }
     }
 
@@ -139,9 +182,13 @@ export async function POST(req: Request) {
       return NextResponse.json({
         success: true,
         processed: 0,
-        message: `Found ${messages.length} matching email(s) but no PDF/CSV/XLSX attachments to parse.`,
+        message:
+          fileErrors.length > 0
+            ? `Found mail but failed to process attachments: ${fileErrors[0]}`
+            : `Found ${messages.length} matching email(s) but no PDF/CSV/XLSX attachments to parse.`,
         query: searchQuery,
         subjects: matchedSubjects,
+        fileErrors,
       })
     }
 
@@ -152,10 +199,17 @@ export async function POST(req: Request) {
       message: `Processed ${filesProcessed} attachment(s) from ${matchedSubjects.length} carbon-report email(s)`,
       query: searchQuery,
       subjects: matchedSubjects,
+      fileErrors: fileErrors.length ? fileErrors : undefined,
     })
   } catch (error: unknown) {
     console.error("Gmail sync error:", error)
-    const message = error instanceof Error ? error.message : "Failed to sync Gmail"
-    return NextResponse.json({ error: message }, { status: 500 })
+    const message = formatGoogleError(error)
+    return NextResponse.json(
+      {
+        error: message,
+        code: "GMAIL_SYNC_FAILED",
+      },
+      { status: 500 }
+    )
   }
 }

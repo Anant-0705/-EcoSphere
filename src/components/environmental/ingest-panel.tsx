@@ -91,16 +91,32 @@ export function IngestPanel() {
         body: JSON.stringify({}),
       })
 
-      const data = await res.json()
+      const raw = await res.text()
+      let data: {
+        error?: string
+        code?: string
+        connectUrl?: string
+        message?: string
+        processed?: number
+        summary?: { created?: number; totalCO2e?: number; needsReview?: string[] }
+      } = {}
+      try {
+        data = raw ? JSON.parse(raw) : {}
+      } catch {
+        throw new Error(
+          res.ok
+            ? "Invalid response from server"
+            : `Server error ${res.status}. Check Vercel env (NEXTAUTH_URL, GOOGLE_*, DATABASE_URL) and that production DB has OAuth columns (prisma db push).`
+        )
+      }
 
       if (res.status === 400 && data.code === "GMAIL_NOT_CONNECTED") {
-        // Start OAuth connect flow
         window.location.href = data.connectUrl || "/api/gmail/connect"
         return
       }
 
       if (!res.ok) {
-        throw new Error(data.error || "Failed to sync Gmail")
+        throw new Error(data.error || `Failed to sync Gmail (${res.status})`)
       }
 
       setResult({

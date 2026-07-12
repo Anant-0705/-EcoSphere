@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { getGmailAuthUrl, resolveAppUser } from "@/lib/google"
+import {
+  getAppBaseUrl,
+  getGmailAuthUrl,
+  resolveAppUser,
+} from "@/lib/google"
+
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
 
 /**
  * Starts the Gmail OAuth flow (gmail.readonly).
- * Redirects to Google, then back to /api/gmail/callback.
  */
 export async function GET() {
-  const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000"
+  const baseUrl = getAppBaseUrl()
 
   try {
     const session = await auth()
@@ -15,7 +21,6 @@ export async function GET() {
       return NextResponse.redirect(new URL("/login", baseUrl))
     }
 
-    // Resolve real Prisma user (session id may be stale after reseed / Google sub)
     const dbUser = await resolveAppUser({
       userId: session.user.id,
       email: session.user.email,
@@ -37,6 +42,14 @@ export async function GET() {
       )
     }
 
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+      return NextResponse.redirect(
+        `${baseUrl}/environmental?gmail=error&reason=${encodeURIComponent(
+          "GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET missing on server"
+        )}`
+      )
+    }
+
     const state = Buffer.from(
       JSON.stringify({
         userId: dbUser.id,
@@ -48,7 +61,8 @@ export async function GET() {
     const url = getGmailAuthUrl(state)
     return NextResponse.redirect(url)
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Failed to start Gmail OAuth"
+    const message =
+      error instanceof Error ? error.message : "Failed to start Gmail OAuth"
     console.error("Gmail connect error:", error)
     return NextResponse.redirect(
       `${baseUrl}/environmental?gmail=error&reason=${encodeURIComponent(message)}`
