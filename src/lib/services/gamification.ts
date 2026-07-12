@@ -118,12 +118,29 @@ export async function submitChallengeProof(participationId: string, proofUrl: st
 }
 
 export async function approveChallenge(participationId: string) {
+  const existing = await prisma.challengeParticipation.findUnique({
+    where: { id: participationId },
+  })
+  if (!existing) throw new Error("Not found")
+  if (existing.approval === "APPROVED") return existing
+
   const p = await prisma.challengeParticipation.update({
     where: { id: participationId },
-    data: { approval: 'APPROVED', progress: 100 }
+    data: { approval: "APPROVED", progress: 100 },
   })
-  EventBus.emit('CHALLENGE_APPROVED', { participationId: p.id })
+  EventBus.emit("CHALLENGE_APPROVED", { participationId: p.id })
   return p
+}
+
+export async function getPendingChallengeParticipations() {
+  return prisma.challengeParticipation.findMany({
+    where: { approval: "PENDING" },
+    include: {
+      employee: { select: { id: true, name: true, email: true, departmentId: true } },
+      challenge: true,
+    },
+    orderBy: { id: "desc" },
+  })
 }
 
 export async function redeemReward(userId: string, rewardId: string) {

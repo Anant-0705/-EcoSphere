@@ -31,7 +31,11 @@ export function CarbonForm({ emissionFactors, departments }: { emissionFactors: 
 
       if (!res.ok) {
         const body = await res.json()
-        throw new Error(body.error?.message || "Failed to add transaction")
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : body.error?.message || "Failed to add transaction"
+        )
       }
 
       router.refresh()

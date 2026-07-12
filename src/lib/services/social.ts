@@ -37,24 +37,38 @@ export async function submitCSRProof(participationId: string, proofUrl: string) 
   })
 }
 
-export async function approveCSR(participationId: string) {
+export async function approveCSR(
+  participationId: string,
+  opts?: { force?: boolean }
+) {
   const p = await prisma.employeeParticipation.findUnique({
     where: { id: participationId },
-    include: { activity: true }
+    include: { activity: true },
   })
   if (!p) throw new Error("Not found")
+  if (p.approval === ApprovalStatus.APPROVED) return p
 
-  // Check org setting if evidence is required
   const org = await prisma.organization.findFirst()
-  if (org?.evidenceRequired && !p.proofUrl) {
+  if (org?.evidenceRequired && !p.proofUrl && !opts?.force) {
     throw new Error("Evidence required before approval")
   }
 
   const updated = await prisma.employeeParticipation.update({
     where: { id: participationId },
-    data: { approval: ApprovalStatus.APPROVED }
+    data: { approval: ApprovalStatus.APPROVED },
   })
-  
-  EventBus.emit('CSR_APPROVED', { participationId: updated.id })
+
+  EventBus.emit("CSR_APPROVED", { participationId: updated.id })
   return updated
+}
+
+export async function getPendingCSRParticipations() {
+  return prisma.employeeParticipation.findMany({
+    where: { approval: ApprovalStatus.PENDING },
+    include: {
+      employee: { select: { id: true, name: true, email: true, departmentId: true } },
+      activity: true,
+    },
+    orderBy: { id: "desc" },
+  })
 }

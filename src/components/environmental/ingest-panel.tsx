@@ -129,7 +129,11 @@ export function IngestPanel() {
             Automated Data Ingestion
           </h3>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Upload invoices or sync your inbox to auto-extract carbon data using AI.
+            Upload files, or sync Gmail for the latest mail whose subject includes{" "}
+            <span className="font-medium text-gray-700 dark:text-gray-200">
+              &quot;Carbon Emission Annual Report&quot;
+            </span>
+            . AI parses the attachment into carbon transactions.
           </p>
         </div>
         <button
@@ -174,7 +178,9 @@ export function IngestPanel() {
             <Mail className="h-8 w-8 text-blue-500 mb-2" />
           )}
           <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Sync Gmail</span>
-          <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">Scan for invoices</span>
+          <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Latest carbon report only
+          </span>
         </button>
       </div>
 
