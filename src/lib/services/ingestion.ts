@@ -3,7 +3,6 @@ import { createGroq } from '@ai-sdk/groq'
 import { generateText } from 'ai'
 import Papa from 'papaparse'
 import * as xlsx from 'xlsx'
-import { PDFParse } from 'pdf-parse'
 import { EventBus } from '../events'
 
 const prisma = new PrismaClient()
@@ -14,6 +13,20 @@ interface ExtractionResult {
   unit: string
   emissionFactorId: string
   confidence: number
+}
+
+/** Serverless-safe PDF text extraction (no browser DOMMatrix / canvas). */
+async function extractPdfText(fileBuffer: Buffer): Promise<string> {
+  // Dynamic import keeps cold-start lighter and avoids bundling issues
+  const { extractText, getDocumentProxy } = await import('unpdf')
+  const data = new Uint8Array(fileBuffer)
+  const pdf = await getDocumentProxy(data)
+  const result = await extractText(pdf, { mergePages: true })
+  // unpdf may return string or string[]
+  if (Array.isArray(result.text)) {
+    return result.text.join('\n')
+  }
+  return String(result.text || '')
 }
 
 export async function ingestDocument(
@@ -36,10 +49,7 @@ export async function ingestDocument(
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
       rawData = JSON.stringify(xlsx.utils.sheet_to_json(firstSheet))
     } else if (ext === 'pdf') {
-      const parser = new PDFParse({ data: fileBuffer })
-      const pdfData = await parser.getText()
-      rawData = pdfData.text
-      await parser.destroy().catch(() => {})
+      rawData = await extractPdfText(fileBuffer)
     } else {
       throw new Error(`Unsupported file type: ${ext}`)
     }
