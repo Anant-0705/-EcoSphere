@@ -95,7 +95,7 @@ Rules:
     
     try {
       extractedItems = JSON.parse(cleanedText)
-    } catch (e) {
+    } catch {
       console.error('Failed to parse AI extraction output:', cleanedText)
       throw new Error('AI extraction returned malformed data.')
     }

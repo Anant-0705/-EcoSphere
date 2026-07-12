@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Bell, Check, Loader2 } from "lucide-react"
+import { Bell, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 export function NotificationPopover() {

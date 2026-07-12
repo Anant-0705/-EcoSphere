@@ -7,8 +7,6 @@ export function PoliciesList({ policies, acks }: { policies: any[], acks: any[] 
   const router = useRouter()
   const [loadingId, setLoadingId] = useState<string | null>(null)
 
-  const ackPolicyIds = new Set(acks.map(a => a.policyId))
-
   async function handleAck(policyId: string) {
     setLoadingId(policyId)
     try {

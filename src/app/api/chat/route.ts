@@ -61,7 +61,7 @@ ${issues.length === 0 ? 'No open compliance issues.' : issues.map((i) => `- ${(i
 ### Recent Carbon Transactions (last 5)
 ${emissions.length === 0 ? 'No recent emissions data.' : emissions.map((e) => `- ${(e as any).emissionFactor?.name || 'Unknown'} (Scope ${(e as any).emissionFactor?.scope || '?'}): ${(e as any).amount || '?'} units on ${new Date((e as any).date).toLocaleDateString()}`).join('\n')}
 `;
-  } catch (err) {
+  } catch {
     esgContext = '\n## Live ESG Data\nUnable to fetch live data at this time.\n';
   }
 
