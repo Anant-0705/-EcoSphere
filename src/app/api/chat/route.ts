@@ -1,5 +1,5 @@
 import { createGroq } from '@ai-sdk/groq';
-import { streamText } from 'ai';
+import { streamText, convertToModelMessages } from 'ai';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
 
@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   const result = streamText({
     model: groq('llama-3.3-70b-versatile'),
     system: "You are the EcoSphere AI ESG Advisor. You are a helpful AI assistant that answers questions about the company's Environmental, Social, and Governance (ESG) performance. Use the provided tools to query real-time data from the company's database to answer the user's questions accurately. If you don't know the answer or the tools don't return data, state that clearly. Do not make up data.",
-    messages,
+    messages: convertToModelMessages(messages),
     tools: {
       getDepartmentScores: {
         description: 'Get the Environmental, Social, and Governance scores for all departments or a specific department.',
