@@ -13,7 +13,8 @@ export function CarbonForm({ emissionFactors, departments }: { emissionFactors: 
     setLoading(true)
     setError("")
     
-    const formData = new FormData(e.currentTarget)
+    const form = e.currentTarget
+    const formData = new FormData(form)
     const data = {
       source: formData.get("source"),
       description: formData.get("description"),
@@ -39,7 +40,7 @@ export function CarbonForm({ emissionFactors, departments }: { emissionFactors: 
       }
 
       router.refresh()
-      e.currentTarget.reset()
+      form.reset()
     } catch (err: any) {
       setError(err.message)
     } finally {
