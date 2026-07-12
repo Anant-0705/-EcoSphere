@@ -1,12 +1,6 @@
 import { NextResponse } from "next/server"
 import { PrismaClient } from "@prisma/client"
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const PdfPrinter = require("pdfmake/js/Printer") as new (fonts: Record<string, unknown>) => {
-  createPdfKitDocument: (doc: unknown) => NodeJS.ReadableStream & {
-    on: (event: string, cb: (...args: unknown[]) => void) => void
-    end: () => void
-  }
-}
+import * as pdfMake from 'pdfmake'
 
 const prisma = new PrismaClient()
 
@@ -30,10 +24,8 @@ export async function GET(req: Request) {
       orderBy: { dueDate: "asc" },
     })
 
-    const printer = new PdfPrinter(fonts)
-
-    const docDefinition = {
-      defaultStyle: { font: "Helvetica" },
+    const docDefinition: any = {
+      defaultStyle: { font: 'Helvetica' },
       content: [
         { text: "EcoSphere Governance & Compliance Report", style: "header" },
         { text: `Generated on: ${new Date().toLocaleString()}`, style: "subheader" },
@@ -71,18 +63,11 @@ export async function GET(req: Request) {
       },
     }
 
-    const pdfDoc = printer.createPdfKitDocument(docDefinition)
-    const chunks: Buffer[] = []
-    const buffer = await new Promise<Buffer>((resolve, reject) => {
-      pdfDoc.on("data", (chunk: unknown) => {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array))
-      })
-      pdfDoc.on("end", () => resolve(Buffer.concat(chunks)))
-      pdfDoc.on("error", reject)
-      pdfDoc.end()
-    })
+    pdfMake.setFonts(fonts)
+    const buffer = await pdfMake.createPdf(docDefinition).getBuffer()
+    const pdfBytes = new Uint8Array(buffer)
 
-    return new NextResponse(new Uint8Array(buffer), {
+    return new NextResponse(pdfBytes, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": 'attachment; filename="governance_report.pdf"',
