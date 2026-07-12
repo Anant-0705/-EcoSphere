@@ -16,9 +16,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Reward ID is required' }, { status: 400 })
     }
 
+    const userId = session.user.id
+
     // Run transaction to check points, deduct points, decrement stock, create redemption record
     const result = await db.$transaction(async (tx) => {
-      const user = await tx.user.findUnique({ where: { id: session.user.id } })
+      const user = await tx.user.findUnique({ where: { id: userId } })
       if (!user) throw new Error('User not found')
 
       const reward = await tx.reward.findUnique({ where: { id: rewardId } })
@@ -44,7 +46,7 @@ export async function POST(req: Request) {
         data: {
           employeeId: user.id,
           rewardId: reward.id,
-          cost: reward.pointsRequired
+          pointsSpent: reward.pointsRequired
         }
       })
 

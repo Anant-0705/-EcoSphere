@@ -8,6 +8,12 @@ const dummyPassword = '$2b$10$vK1frHcSboUGHsCtHKpFO.KHN8YFrPezxhJpKn04R58.OqTr.g
 async function main() {
   console.log('Seeding database...')
 
+  const existingAdmin = await prisma.user.findUnique({ where: { email: 'admin@ecocorp.com' } })
+  if (existingAdmin) {
+    console.log('Seed data already present (admin@ecocorp.com exists). Skipping.')
+    return
+  }
+
   // 1. Organization
   const org = await prisma.organization.create({
     data: {

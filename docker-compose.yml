@@ -1,0 +1,43 @@
+# Project name pins resource names under this repo (avoids clashing with other folders)
+name: ecosphere
+
+services:
+  db:
+    image: postgres:15-alpine
+    # No fixed container_name — Docker Compose uses ecosphere-db-1 (project-scoped)
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: ecosphere
+    ports:
+      - "5432:5432"
+    volumes:
+      - ecosphere_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d ecosphere"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Optional: full app in Docker (slow first build). Prefer: npm run docker:up && npm run dev
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://admin:password123@db:5432/ecosphere
+      NEXTAUTH_URL: http://localhost:3000
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - full
+
+volumes:
+  ecosphere_pgdata:

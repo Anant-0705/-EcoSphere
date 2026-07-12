@@ -1,6 +1,6 @@
+import { Suspense } from "react"
 import { getEmissionFactors, getEnvironmentalGoals, getCarbonTransactions, getDepartmentScores } from "@/lib/services/environmental"
 import { PrismaClient } from "@prisma/client"
-import { CarbonForm } from "@/components/environmental/carbon-form"
 import { IngestPanel } from "@/components/environmental/ingest-panel"
 import { GoalsList } from "@/components/environmental/goals-list"
 
@@ -65,7 +65,9 @@ export default async function EnvironmentalDashboardPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <IngestPanel />
+        <Suspense fallback={<div className="rounded-xl border bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">Loading ingestion…</div>}>
+          <IngestPanel />
+        </Suspense>
         <GoalsList goals={goals} departments={departments} />
       </div>
 

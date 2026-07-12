@@ -12,7 +12,8 @@ model User {
   id            String   @id @default(cuid())
   name          String
   email         String   @unique
-  passwordHash  String
+  passwordHash  String?  // optional for Google OAuth users
+  image         String?
   role          Role     @default(EMPLOYEE)
   departmentId  String?
   department    Department? @relation(fields: [departmentId], references: [id])
@@ -20,6 +21,11 @@ model User {
   points        Int      @default(0)   // spendable balance (rewards)
   status        Status   @default(ACTIVE)
   createdAt     DateTime @default(now())
+
+  // Gmail OAuth tokens (for invoice sync)
+  googleRefreshToken  String?
+  googleAccessToken   String?
+  googleTokenExpiry   DateTime?
 
   participations       EmployeeParticipation[]
   challengeParts       ChallengeParticipation[]

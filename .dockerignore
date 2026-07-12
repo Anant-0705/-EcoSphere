@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.gitignore
+*.md
+implemenation
+scratch
+.env*.local
+npm-debug.log*
+.DS_Store
+coverage

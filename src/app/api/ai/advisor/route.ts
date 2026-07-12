@@ -70,7 +70,7 @@ Provide your analysis in this EXACT JSON format (no markdown, no code fences, ju
     const { text } = await generateText({
       model: groq('llama-3.3-70b-versatile'),
       prompt,
-      maxTokens: 1000,
+      maxOutputTokens: 1000,
     })
 
     // Clean and parse JSON

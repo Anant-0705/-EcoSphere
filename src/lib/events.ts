@@ -5,11 +5,14 @@ export type AppEvents = {
   CSR_APPROVED: { participationId: string }
   CHALLENGE_APPROVED: { participationId: string }
   COMPLIANCE_ISSUE_NEW: { issueId: string }
-  POLICY_ACK: { policyId: string, userId: string }
+  POLICY_ACK: { policyId: string; userId: string }
   CARBON_TXN_CREATED: { deptId: string }
-  BADGE_UNLOCKED: { userId: string, badgeId: string }
+  BADGE_UNLOCKED: { userId: string; badgeId: string }
   OVERDUE_ISSUE: { issueId: string }
-  POLICY_REMINDER: { userId: string, policyId: string }
+  POLICY_REMINDER: { userId: string; policyId: string }
+  POLICY_PUBLISHED: { policyId: string }
+  SCORE_CHANGED: { deptId: string }
+  INGEST_DONE: { userId: string; summary: { created: number; totalCO2e: number; needsReview: string[] } }
 }
 
 class TypedEventEmitter extends EventEmitter {

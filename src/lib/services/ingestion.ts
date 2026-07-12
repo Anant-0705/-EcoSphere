@@ -3,7 +3,7 @@ import { createGroq } from '@ai-sdk/groq'
 import { generateText } from 'ai'
 import Papa from 'papaparse'
 import * as xlsx from 'xlsx'
-import pdfParse from 'pdf-parse'
+import { PDFParse } from 'pdf-parse'
 import { EventBus } from '../events'
 
 const prisma = new PrismaClient()
@@ -36,8 +36,10 @@ export async function ingestDocument(
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
       rawData = JSON.stringify(xlsx.utils.sheet_to_json(firstSheet))
     } else if (ext === 'pdf') {
-      const pdfData = await pdfParse(fileBuffer)
+      const parser = new PDFParse({ data: fileBuffer })
+      const pdfData = await parser.getText()
       rawData = pdfData.text
+      await parser.destroy().catch(() => {})
     } else {
       throw new Error(`Unsupported file type: ${ext}`)
     }
@@ -85,7 +87,7 @@ Rules:
     const { text } = await generateText({
       model: groq('llama-3.3-70b-versatile'),
       prompt,
-      maxTokens: 2000,
+      maxOutputTokens: 2000,
     })
 
     const cleanedText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
