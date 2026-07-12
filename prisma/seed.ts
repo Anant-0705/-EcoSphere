@@ -3,7 +3,7 @@ import { PrismaClient, Role, Status, ApprovalStatus, ChallengeStatus, Difficulty
 const prisma = new PrismaClient()
 
 // Dummy bcrypt hash for 'password123'
-const dummyPassword = '$2a$12$N9/sK/.bL3hFhG.B9U0g..2B6q1VwK6/h39sV/dG02V/ZfT2/N8/u' // Note: This is an actual valid bcrypt hash for 'password123'
+const dummyPassword = '$2b$10$vK1frHcSboUGHsCtHKpFO.KHN8YFrPezxhJpKn04R58.OqTr.gkKm' // Note: This is an actual valid bcrypt hash for 'password123'
 
 async function main() {
   console.log('Seeding database...')
